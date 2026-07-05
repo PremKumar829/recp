@@ -5,47 +5,56 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from flask import Flask
 
 # ================= ENVIRONMENT CONFIGURATION =================
-# We fetch these from Render Environment Variables safely
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-# Convert ADMIN_ID to integer (defaulting to 0 if not set)
+BOT_TOKEN = os.environ.get("BOT_TOKEN") 
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 0)) 
 START_IMAGE = "https://files.catbox.moe/1suz8b.jpg"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# Dummy web server to keep Render Web Service happy
+# Render ke liye Dummy Web Server
 @app.route('/')
 def home():
     return "Telegram Bot is running smoothly on Render!"
 
-def run_web():
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+# ================= CHANNELS DATABASE =================
+# Format: "Chat_ID_ya_Username": {"name": "Button Name", "url": "Join Link"}
+force_channels = {
+    # YAHAN -1003004738287 KI JAGAH APNE 1ST CHANNEL KA ASLI ID DAALO
+    "-1003004738287": {
+        "name": "Channel 1", 
+        "url": "https://t.me/+Gouc7PsDosk4MTRl"
+    },
+    # YAHAN -1003783215718 KI JAGAH APNE 2ND CHANNEL KA ASLI ID DAALO
+    "-1003783215718": {
+        "name": "Channel 2", 
+        "url": "https://t.me/+ul-wxo5Tg7k0YWI9"
+    }
+}
 
-# In-memory storage (For production, use SQLite or MongoDB)
-force_channels = {}  
 users_db = set()
-broadcasting_state = {} 
+broadcasting_state = {}
 
 # ================= HELPER FUNCTIONS =================
 def check_user_joined(user_id):
     if not force_channels:
         return True
     
-    for channel_username in force_channels.keys():
+    for chat_id in force_channels.keys():
         try:
-            status = bot.get_chat_member(channel_username, user_id).status
+            status = bot.get_chat_member(chat_id, user_id).status
             if status in ['left', 'kicked']:
                 return False
-        except Exception:
-            pass 
+        except Exception as e:
+            print(f"Error checking {chat_id}: {e}")
+            # Agar bot channel me admin nahi hai ya ID galat hai, toh False return karega
+            return False 
     return True
 
 def get_force_join_keyboard():
-    markup = InlineKeyboardMarkup()
-    for username, name in force_channels.items():
-        markup.add(InlineKeyboardButton(text=f"Join {name}", url=f"https://t.me/{username[1:]}"))
+    markup = InlineKeyboardMarkup(row_width=1)
+    for chat_id, data in force_channels.items():
+        markup.add(InlineKeyboardButton(text=f"📢 Join {data['name']}", url=data['url']))
     markup.add(InlineKeyboardButton(text="✅ I have joined", callback_data="check_joined"))
     return markup
 
@@ -59,7 +68,7 @@ def send_welcome(message):
         bot.send_photo(
             message.chat.id, 
             photo=START_IMAGE,
-            caption="⚠️ **Action Required!**\n\nYou must join all our official channels to use this bot.",
+            caption="⚠️ **Action Required!**\n\nAapko bot use karne ke liye pehle hamare official channels join karne honge.",
             reply_markup=get_force_join_keyboard(),
             parse_mode="Markdown"
         )
@@ -67,7 +76,7 @@ def send_welcome(message):
         bot.send_photo(
             message.chat.id,
             photo=START_IMAGE,
-            caption=f"Hello {message.from_user.first_name}! Welcome to the bot. You have access to all features now.",
+            caption=f"Hello [{message.from_user.first_name}](tg://user?id={user_id})! 🎉\n\nWelcome to the bot. Verification complete hai, ab aap bot ke features use kar sakte hain.",
             parse_mode="Markdown"
         )
 
@@ -77,9 +86,15 @@ def verify_join(call):
     if check_user_joined(user_id):
         bot.answer_callback_query(call.id, "✅ Verified! Welcome to the bot.")
         bot.delete_message(call.message.chat.id, call.message.message_id)
-        bot.send_message(call.message.chat.id, "Verification complete. Send /start to begin.")
+        # Verify hone ke baad wapas start command jaisa welcome bhejega
+        bot.send_photo(
+            call.message.chat.id,
+            photo=START_IMAGE,
+            caption=f"Verification complete! 🎉\nWelcome [{call.from_user.first_name}](tg://user?id={user_id}). Aap bot use kar sakte hain.",
+            parse_mode="Markdown"
+        )
     else:
-        bot.answer_callback_query(call.id, "❌ You haven't joined all channels yet!", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ Aapne abhi tak sabhi channels join nahi kiye hain!", show_alert=True)
 
 # ================= ADMIN PANEL =================
 @bot.message_handler(commands=['admin'])
@@ -106,12 +121,19 @@ def admin_callbacks(call):
 
     if action == "stats":
         bot.answer_callback_query(call.id)
-        text = f"📊 **Bot Statistics**\n\nTotal Users: {len(users_db)}\nActive Force Channels: {len(force_channels)}"
+        text = f"📊 **Bot Statistics**\n\n👥 Total Users: {len(users_db)}\n📢 Active Force Channels: {len(force_channels)}"
         bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
         
     elif action == "add":
         bot.answer_callback_query(call.id)
-        msg = bot.send_message(call.message.chat.id, "Send the channel username (e.g., @mychannel):")
+        text = (
+            "Naya channel add karne ke liye is format mein message bhejein:\n\n"
+            "`Chat_ID | Channel Name | Join Link`\n\n"
+            "Example (Private): `-100123456789 | VIP Channel | https://t.me/+abcde`\n"
+            "Example (Public): `@mychannel | My Channel | https://t.me/mychannel`\n\n"
+            "(Send /cancel to abort)"
+        )
+        msg = bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
         bot.register_next_step_handler(msg, process_add_channel)
         
     elif action == "remove":
@@ -120,9 +142,9 @@ def admin_callbacks(call):
             bot.send_message(call.message.chat.id, "No channels to remove.")
             return
         
-        markup = InlineKeyboardMarkup()
-        for username in force_channels.keys():
-            markup.add(InlineKeyboardButton(f"Remove {username}", callback_data=f"del_{username}"))
+        markup = InlineKeyboardMarkup(row_width=1)
+        for chat_id, data in force_channels.items():
+            markup.add(InlineKeyboardButton(f"❌ Remove {data['name']}", callback_data=f"del_{chat_id}"))
         bot.send_message(call.message.chat.id, "Select a channel to remove:", reply_markup=markup)
         
     elif action == "broadcast":
@@ -135,22 +157,32 @@ def admin_callbacks(call):
 def process_remove_channel(call):
     if call.from_user.id != ADMIN_ID:
         return
-    username = call.data.split("del_")[1]
-    if username in force_channels:
-        del force_channels[username]
-        bot.answer_callback_query(call.id, f"Removed {username}")
-        bot.edit_message_text(f"✅ Removed {username} from force join.", call.message.chat.id, call.message.message_id)
+    chat_id = call.data.split("del_")[1]
+    if chat_id in force_channels:
+        name = force_channels[chat_id]['name']
+        del force_channels[chat_id]
+        bot.answer_callback_query(call.id, f"Removed {name}")
+        bot.edit_message_text(f"✅ Removed **{name}** from force join.", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
 
 def process_add_channel(message):
     if message.text == '/cancel':
-        return
-    username = message.text.strip()
-    if not username.startswith('@'):
-        bot.send_message(message.chat.id, "Invalid format. Must start with @")
+        bot.send_message(message.chat.id, "Action cancelled.")
         return
     
-    force_channels[username] = username 
-    bot.send_message(message.chat.id, f"✅ Successfully added {username} to force join. **Make sure I am an admin in that channel!**", parse_mode="Markdown")
+    try:
+        parts = message.text.split('|')
+        if len(parts) != 3:
+            bot.send_message(message.chat.id, "❌ Galat format! Please `ID | Name | Link` format me bhejein.")
+            return
+            
+        chat_id = parts[0].strip()
+        name = parts[1].strip()
+        url = parts[2].strip()
+        
+        force_channels[chat_id] = {"name": name, "url": url}
+        bot.send_message(message.chat.id, f"✅ Successfully added **{name}** to force join.\n\n⚠️ **Make sure I am an admin in that channel!**", parse_mode="Markdown")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Error: {e}")
 
 def process_broadcast(message):
     if message.text == '/cancel':
@@ -177,13 +209,16 @@ def process_broadcast(message):
             failed += 1
             
     broadcasting_state.pop(ADMIN_ID, None)
-    bot.send_message(message.chat.id, f"✅ **Broadcast Complete!**\n\nSuccessful: {success}\nFailed (blocked bot): {failed}", parse_mode="Markdown")
+    bot.send_message(message.chat.id, f"✅ **Broadcast Complete!**\n\n👥 Successful: {success}\n❌ Failed (blocked bot): {failed}", parse_mode="Markdown")
 
 # ================= RUNNER =================
+def run_bot():
+    print("Telegram Bot is polling...")
+    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+
 if __name__ == "__main__":
-    # Start the Flask web server in a separate thread for Render
-    threading.Thread(target=run_web, daemon=True).start()
+    # Render ko khush rakhne ke liye Flask main thread par, aur Bot background thread par
+    threading.Thread(target=run_bot, daemon=True).start()
     
-    # Start the Telegram bot polling
-    print("Bot is starting...")
-    bot.infinity_polling()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
