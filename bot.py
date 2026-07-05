@@ -1,31 +1,32 @@
 import os
+import random
 import threading
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReactionTypeEmoji
 from flask import Flask
 
 # ================= ENVIRONMENT CONFIGURATION =================
+# Apne token aur ID ko Render environment variables se fetch karein
 BOT_TOKEN = os.environ.get("BOT_TOKEN") 
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 0)) 
-START_IMAGE = "https://files.catbox.moe/1suz8b.jpg"
+
+# Aapka HD Telegram File ID (ab error 400 nahi aayega)
+START_IMAGE = "AgACAgUAAxkBAAEryR9qSqXyK-Jd_qhzz3kFi4gzevHQ3AACVBVrG2diUVZV4wkcTvlK8AEAAwIAA3kAAzwE"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# Render ke liye Dummy Web Server
+# Render ko live rakhne ke liye Dummy Web Server
 @app.route('/')
 def home():
-    return "Telegram Bot is running smoothly on Render!"
+    return "Telegram Bot is running smoothly on Render! 🚀"
 
 # ================= CHANNELS DATABASE =================
-# Format: "Chat_ID_ya_Username": {"name": "Button Name", "url": "Join Link"}
 force_channels = {
-    # YAHAN -1003004738287 KI JAGAH APNE 1ST CHANNEL KA ASLI ID DAALO
     "-1003004738287": {
         "name": "Channel 1", 
         "url": "https://t.me/+Gouc7PsDosk4MTRl"
     },
-    # YAHAN -1003783215718 KI JAGAH APNE 2ND CHANNEL KA ASLI ID DAALO
     "-1003783215718": {
         "name": "Channel 2", 
         "url": "https://t.me/+ul-wxo5Tg7k0YWI9"
@@ -47,7 +48,6 @@ def check_user_joined(user_id):
                 return False
         except Exception as e:
             print(f"Error checking {chat_id}: {e}")
-            # Agar bot channel me admin nahi hai ya ID galat hai, toh False return karega
             return False 
     return True
 
@@ -63,6 +63,15 @@ def get_force_join_keyboard():
 def send_welcome(message):
     user_id = message.from_user.id
     users_db.add(user_id) 
+    
+    # --- AUTO REACTION FEATURE ---
+    try:
+        emojis = ['❤️‍🔥', '🎁', '🎉']
+        reaction = ReactionTypeEmoji(random.choice(emojis))
+        bot.set_message_reaction(message.chat.id, message.id, [reaction], is_big=False)
+    except Exception as e:
+        print(f"Reaction failed: {e}")
+    # -----------------------------
     
     if not check_user_joined(user_id):
         bot.send_photo(
@@ -86,7 +95,6 @@ def verify_join(call):
     if check_user_joined(user_id):
         bot.answer_callback_query(call.id, "✅ Verified! Welcome to the bot.")
         bot.delete_message(call.message.chat.id, call.message.message_id)
-        # Verify hone ke baad wapas start command jaisa welcome bhejega
         bot.send_photo(
             call.message.chat.id,
             photo=START_IMAGE,
@@ -129,8 +137,7 @@ def admin_callbacks(call):
         text = (
             "Naya channel add karne ke liye is format mein message bhejein:\n\n"
             "`Chat_ID | Channel Name | Join Link`\n\n"
-            "Example (Private): `-100123456789 | VIP Channel | https://t.me/+abcde`\n"
-            "Example (Public): `@mychannel | My Channel | https://t.me/mychannel`\n\n"
+            "Example: `-100123456789 | VIP Channel | https://t.me/+abcde`\n\n"
             "(Send /cancel to abort)"
         )
         msg = bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
@@ -213,12 +220,14 @@ def process_broadcast(message):
 
 # ================= RUNNER =================
 def run_bot():
+    try:
+        bot.remove_webhook()
+    except Exception:
+        pass
     print("Telegram Bot is polling...")
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    bot.infinity_polling(skip_pending=True, timeout=10, long_polling_timeout=5)
 
 if __name__ == "__main__":
-    # Render ko khush rakhne ke liye Flask main thread par, aur Bot background thread par
     threading.Thread(target=run_bot, daemon=True).start()
-    
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
