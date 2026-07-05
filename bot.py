@@ -1,4 +1,5 @@
 import os
+import time
 import random
 import threading
 import telebot
@@ -6,17 +7,16 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReactionTy
 from flask import Flask
 
 # ================= ENVIRONMENT CONFIGURATION =================
-# Apne token aur ID ko Render environment variables se fetch karein
 BOT_TOKEN = os.environ.get("BOT_TOKEN") 
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 0)) 
 
-# Aapka HD Telegram File ID (ab error 400 nahi aayega)
-START_IMAGE = "AgACAgUAAxkBAAEryR9qSqXyK-Jd_qhzz3kFi4gzevHQ3AACVBVrG2diUVZV4wkcTvlK8AEAAwIAA3kAAzwE"
+# 100% Working Test Image (Aap isko baad mein apne .jpg link se replace kar sakte ho)
+START_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Telegram_logo.svg/512px-Telegram_logo.svg.png"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# Render ko live rakhne ke liye Dummy Web Server
+# ================= RENDER DUMMY SERVER =================
 @app.route('/')
 def home():
     return "Telegram Bot is running smoothly on Render! 🚀"
@@ -74,6 +74,19 @@ def send_welcome(message):
     # -----------------------------
     
     if not check_user_joined(user_id):
+        # 1. Typing Indicator & Congrats Message
+        bot.send_chat_action(message.chat.id, 'typing')
+        time.sleep(1.5) 
+        
+        bot.send_message(
+            message.chat.id, 
+            "Congratulations 🎉 Join Our Official Group To Start Your Task 🥳"
+        )
+        
+        # 2. Photo Upload Indicator & Image with Buttons
+        bot.send_chat_action(message.chat.id, 'upload_photo')
+        time.sleep(0.5)
+        
         bot.send_photo(
             message.chat.id, 
             photo=START_IMAGE,
