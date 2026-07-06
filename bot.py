@@ -11,7 +11,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 0)) 
 
 # 100% Working Test Image (Aap isko baad mein apne .jpg link se replace kar sakte ho)
-START_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Telegram_logo.svg/512px-Telegram_logo.svg.png"
+START_IMAGE = "https://ik.imagekit.io/primegupta/IMG_20260705_221623_469.jpg"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
